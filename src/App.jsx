@@ -1,17 +1,25 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Power, Zap, Gauge, Volume2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Power, Zap, GitCommit, GitMerge, SlidersHorizontal, Volume2, AlertTriangle } from 'lucide-react';
 
 // --- UI Components ---
 
-// A new component for the permission modal
-const PermissionModal = ({ onAllow, isLibraryLoaded }) => (
-    <div className="absolute inset-0 bg-gray-900 bg-opacity-90 backdrop-blur-sm flex items-center justify-center z-50">
+const PermissionModal = ({ onAllow, isLibraryLoaded, error }) => (
+    <div className="absolute inset-0 bg-gray-900 bg-opacity-90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="bg-gray-800 rounded-2xl shadow-2xl p-8 border border-gray-700 text-center w-full max-w-sm">
             <Volume2 size={48} className="mx-auto text-cyan-400 mb-4" />
             <h2 className="text-2xl font-bold mb-2">Audio Permission Required</h2>
             <p className="text-gray-400 mb-6">
                 Please click the button below to enable audio for this metronome.
             </p>
+            
+            {/* Display an error message if audio fails to start */}
+            {error && (
+                <div className="bg-red-900/50 border border-red-700 text-red-300 text-sm rounded-lg p-3 mb-4 flex items-center gap-2">
+                    <AlertTriangle size={24} />
+                    <span>{error}</span>
+                </div>
+            )}
+
             <button
                 onClick={onAllow}
                 disabled={!isLibraryLoaded}
@@ -37,24 +45,70 @@ const PowerButton = ({ isPlaying, onClick }) => (
     </button>
 );
 
-const Slider = ({ icon, label, value, min, max, step, onChange, unit }) => (
-    <div className="space-y-3">
-        <label className="flex items-center space-x-2 text-sm font-medium text-gray-300">
-            {icon}
-            <span>{label}</span>
-            <span className="font-bold text-white bg-gray-700 px-2 py-0.5 rounded-md text-xs">
-                {value} {unit}
-            </span>
-        </label>
-        <input
-            type="range"
-            min={min}
-            max={max}
-            step={step}
-            value={value}
-            onChange={onChange}
-            className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer range-lg accent-cyan-500"
-        />
+const Slider = ({ icon, label, value, min, max, step, onChange, unit }) => {
+    
+    const handleInputBlur = (e) => {
+        let numValue = parseInt(e.target.value, 10);
+
+        if (isNaN(numValue)) {
+            numValue = min;
+        } else if (numValue > max) {
+            numValue = max;
+        } else if (numValue < min) {
+            numValue = min;
+        }
+        
+        onChange({ target: { value: String(numValue) } });
+    };
+
+    return (
+        <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm font-medium text-gray-300">
+                <div className="flex items-center space-x-2">
+                    {icon}
+                    <span>{label}</span>
+                </div>
+                <div className="flex items-center space-x-1 bg-gray-700 px-2 py-1 rounded-md">
+                    <input
+                        type="number"
+                        value={value}
+                        min={min}
+                        max={max}
+                        onChange={onChange}
+                        onBlur={handleInputBlur}
+                        className="w-14 bg-transparent text-white font-bold text-right focus:outline-none p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <span className="text-gray-400">{unit}</span>
+                </div>
+            </div>
+            <input
+                type="range"
+                min={min}
+                max={max}
+                step={step}
+                value={value}
+                onChange={onChange}
+                className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer range-lg accent-cyan-500"
+            />
+        </div>
+    );
+};
+
+
+const ModeSwitcher = ({ mode, setMode }) => (
+    <div className="flex bg-gray-700 rounded-lg p-1">
+        <button
+            onClick={() => setMode('consistent')}
+            className={`w-1/2 rounded-md py-2 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${mode === 'consistent' ? 'bg-cyan-600 text-white' : 'text-gray-300 hover:bg-gray-600'}`}
+        >
+            <GitCommit size={16} /> Consistent
+        </button>
+        <button
+            onClick={() => setMode('inconsistent')}
+            className={`w-1/2 rounded-md py-2 text-sm font-bold flex items-center justify-center gap-2 transition-colors ${mode === 'inconsistent' ? 'bg-cyan-600 text-white' : 'text-gray-300 hover:bg-gray-600'}`}
+        >
+            <GitMerge size={16} /> Inconsistent
+        </button>
     </div>
 );
 
@@ -63,107 +117,139 @@ const Slider = ({ icon, label, value, min, max, step, onChange, unit }) => (
 export default function App() {
     const [showPermissionModal, setShowPermissionModal] = useState(true);
     const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
+    const [audioError, setAudioError] = useState(''); // State for audio errors
     const [isPlaying, setIsPlaying] = useState(false);
+    
+    const [mode, setMode] = useState('consistent');
     const [rate, setRate] = useState(120);
-    const [constancy, setConstancy] = useState(100);
+    const [minRate, setMinRate] = useState(110);
+    const [maxRate, setMaxRate] = useState(130);
+    const [consistency, setConsistency] = useState(90);
 
-    const oscillatorRef = useRef(null);
-    const intervalRef = useRef(null);
+    const synthRef = useRef(null);
+    const loopRef = useRef(null);
+    const modeRef = useRef(mode);
+    const minRateRef = useRef(minRate);
+    const maxRateRef = useRef(maxRate);
+    const consistencyRef = useRef(consistency);
 
-    // Effect to check if the Tone.js library is available
+    useEffect(() => { modeRef.current = mode; }, [mode]);
+    useEffect(() => { minRateRef.current = minRate; }, [minRate]);
+    useEffect(() => { maxRateRef.current = maxRate; }, [maxRate]);
+    useEffect(() => { consistencyRef.current = consistency; }, [consistency]);
+
     useEffect(() => {
         const checkTone = () => {
-            if (window.Tone) {
-                setIsLibraryLoaded(true);
-                return true;
-            }
+            if (window.Tone) { setIsLibraryLoaded(true); return true; }
             return false;
         };
         if (checkTone()) return;
-        const libraryCheckInterval = setInterval(() => {
-            if (checkTone()) clearInterval(libraryCheckInterval);
-        }, 100);
-        return () => clearInterval(libraryCheckInterval);
+        const interval = setInterval(() => { if (checkTone()) clearInterval(interval); }, 100);
+        return () => clearInterval(interval);
     }, []);
 
-    // This function is now called from the modal to initialize and start audio
-    const initializeAndPlay = async () => {
+    const initializeAudio = async () => {
         if (!isLibraryLoaded) return;
+        setAudioError(''); // Clear previous errors
         
         const Tone = window.Tone;
         try {
             await Tone.start();
-            oscillatorRef.current = new Tone.Oscillator({
-                type: 'sine',
+            
+            synthRef.current = new Tone.Synth({
+                oscillator: { type: 'triangle' },
+                envelope: { attack: 0.005, decay: 0.1, sustain: 0.01, release: 0.1 },
             }).toDestination();
-            setShowPermissionModal(false); // Hide the modal on success
-            setIsPlaying(true);          // Start playing immediately
-            console.log("Audio permission granted and playback started.");
+            
+            loopRef.current = new Tone.Loop((time) => {
+                synthRef.current?.triggerAttackRelease('G5', '16n', time);
+
+                if (modeRef.current === 'inconsistent') {
+                    const min = parseFloat(minRateRef.current);
+                    const max = parseFloat(maxRateRef.current);
+                    const consist = parseFloat(consistencyRef.current);
+                    
+                    const randomnessFactor = 1 - (consist / 100);
+                    const midpoint = (min + max) / 2;
+                    const totalRange = max - min;
+                    const effectiveRange = totalRange * randomnessFactor;
+                    const randomOffset = (Math.random() - 0.5) * effectiveRange;
+                    let newBpm = midpoint + randomOffset;
+                    
+                    newBpm = Math.max(min, Math.min(max, newBpm));
+
+                    Tone.Transport.bpm.rampTo(newBpm, 0.1);
+                }
+            }, '4n');
+
+            setShowPermissionModal(false);
+            setIsPlaying(true);
         } catch (error) {
-            console.error("Audio permission was denied.", error);
-            // You could show an error message to the user here
+            console.error("Critical audio error: Could not start AudioContext.", error);
+            setAudioError("Your browser blocked audio. Please check site permissions and refresh.");
         }
     };
 
-    const updateFrequency = useCallback(() => {
-        if (!oscillatorRef.current) return;
-        const osc = oscillatorRef.current;
-        const minFreq = 220, maxFreq = 440, constantFreq = (minFreq + maxFreq) / 2;
-        if (constancy >= 100) osc.frequency.rampTo(constantFreq, 0.05);
-        else {
-            if (Math.random() * 100 < constancy) osc.frequency.rampTo(constantFreq, 0.05);
-            else osc.frequency.rampTo(Math.random() * (maxFreq - minFreq) + minFreq, 0.05);
-        }
-    }, [constancy]);
-
-    // Main effect to control the audio engine, now more robust
     useEffect(() => {
-        if (showPermissionModal || !isPlaying) {
-            if (oscillatorRef.current?.state === 'started') oscillatorRef.current.stop();
-            if (intervalRef.current) clearInterval(intervalRef.current);
-            return;
+        const Tone = window.Tone;
+        if (!Tone || showPermissionModal) return;
+
+        if (mode === 'consistent') {
+            Tone.Transport.bpm.value = rate;
+        } else {
+            Tone.Transport.bpm.value = (parseFloat(minRate) + parseFloat(maxRate)) / 2;
         }
 
-        if (oscillatorRef.current?.state !== 'started') oscillatorRef.current.start();
-        
-        updateFrequency();
-        const intervalTime = 60000 / rate;
-        intervalRef.current = setInterval(updateFrequency, intervalTime);
+        if (isPlaying) {
+            loopRef.current?.start(0);
+            Tone.Transport.start();
+        } else {
+            Tone.Transport.stop();
+        }
 
-        return () => {
-            if (intervalRef.current) clearInterval(intervalRef.current);
-        };
-    }, [isPlaying, rate, updateFrequency, showPermissionModal]);
+    }, [isPlaying, rate, minRate, maxRate, mode, showPermissionModal]);
     
-    // Final cleanup on unmount
     useEffect(() => {
         return () => {
-            if (oscillatorRef.current) oscillatorRef.current.dispose();
+            const Tone = window.Tone;
+            if (Tone?.Transport) Tone.Transport.stop();
+            loopRef.current?.dispose();
+            synthRef.current?.dispose();
         };
     }, []);
 
     return (
         <div className="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans relative">
-            {showPermissionModal && <PermissionModal onAllow={initializeAndPlay} isLibraryLoaded={isLibraryLoaded} />}
+            {showPermissionModal && <PermissionModal onAllow={initializeAudio} isLibraryLoaded={isLibraryLoaded} error={audioError} />}
             
-            <div className="w-full max-w-sm bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-8 space-y-8 border border-gray-700">
+            <div className="w-full max-w-sm bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-8 space-y-6 border border-gray-700">
                 <div className="text-center">
-                    <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
-                        Pitch Metronome
+                    {/* Responsive title size */}
+                    <h1 className="text-2xl sm:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
+                        Dynamic Metronome
                     </h1>
-                    <p className="text-gray-400 mt-2 h-5">Set BPM and pitch constancy.</p>
+                    <p className="text-gray-400 mt-2 h-5">Practice with a fixed or variable tempo.</p>
                 </div>
 
-                <div className="flex items-center justify-center">
+                <div className="flex items-center justify-center my-4">
                     <PowerButton isPlaying={isPlaying} onClick={() => setIsPlaying(p => !p)} />
                 </div>
+                
+                <div className="space-y-4">
+                    <ModeSwitcher mode={mode} setMode={setMode} />
 
-                <div className="space-y-6">
-                    <Slider icon={<Zap size={20} className="text-red-400"/>} label="Rate" value={rate} min="30" max="240" step="1" onChange={(e) => setRate(e.target.value)} unit="BPM" />
-                    <Slider icon={<Gauge size={20} className="text-green-400"/>} label="Constancy" value={constancy} min="0" max="100" step="1" onChange={(e) => setConstancy(e.target.value)} unit="%" />
+                    {mode === 'consistent' ? (
+                        <Slider icon={<Zap size={20} className="text-red-400"/>} label="Rate" value={rate} min="10" max="240" step="1" onChange={(e) => setRate(e.target.value)} unit="BPM" />
+                    ) : (
+                        <div className="space-y-4 pt-2 border-t border-gray-700/50">
+                           <Slider icon={<Zap size={20} className="text-green-400"/>} label="Min Rate" value={minRate} min="10" max="240" step="1" onChange={(e) => setMinRate(e.target.value)} unit="BPM" />
+                           <Slider icon={<Zap size={20} className="text-red-400"/>} label="Max Rate" value={maxRate} min="10" max="240" step="1" onChange={(e) => setMaxRate(e.target.value)} unit="BPM" />
+                           <Slider icon={<SlidersHorizontal size={20} className="text-blue-400"/>} label="Consistency" value={consistency} min="0" max="100" step="1" onChange={(e) => setConsistency(e.target.value)} unit="%" />
+                        </div>
+                    )}
                 </div>
             </div>
-            <footer className="text-center mt-8 text-gray-500 text-sm">
+            <footer className="text-center mt-8 text-gray-500 text-xs sm:text-sm">
                 <p>
                     {showPermissionModal 
                         ? "Waiting for audio permission..."
