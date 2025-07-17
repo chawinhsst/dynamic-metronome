@@ -3,16 +3,16 @@ import { Power, Zap, GitCommit, GitMerge, SlidersHorizontal, Volume2, AlertTrian
 
 // --- UI Components ---
 
-const PermissionModal = ({ onAllow, isLibraryLoaded, error }) => (
+// Updated to show a loading state while initializing
+const PermissionModal = ({ onAllow, isLibraryLoaded, error, isInitializing }) => (
     <div className="absolute inset-0 bg-gray-900 bg-opacity-90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="bg-gray-800 rounded-2xl shadow-2xl p-8 border border-gray-700 text-center w-full max-w-sm">
             <Volume2 size={48} className="mx-auto text-cyan-400 mb-4" />
             <h2 className="text-2xl font-bold mb-2">Audio Permission Required</h2>
             <p className="text-gray-400 mb-6">
-                Please click the button below to enable audio for this metronome.
+                A tap is required to enable audio on this device.
             </p>
             
-            {/* Display an error message if audio fails to start */}
             {error && (
                 <div className="bg-red-900/50 border border-red-700 text-red-300 text-sm rounded-lg p-3 mb-4 flex items-center gap-2">
                     <AlertTriangle size={24} />
@@ -22,10 +22,16 @@ const PermissionModal = ({ onAllow, isLibraryLoaded, error }) => (
 
             <button
                 onClick={onAllow}
-                disabled={!isLibraryLoaded}
-                className="w-full bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-all duration-300"
+                disabled={!isLibraryLoaded || isInitializing}
+                className="w-full bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center"
             >
-                {isLibraryLoaded ? 'Allow Audio' : 'Loading Audio Library...'}
+                {isInitializing ? (
+                    <div className="w-5 h-5 border-t-2 border-white rounded-full animate-spin"></div>
+                ) : isLibraryLoaded ? (
+                    'Allow Audio'
+                ) : (
+                    'Loading Library...'
+                )}
             </button>
         </div>
     </div>
@@ -50,13 +56,9 @@ const Slider = ({ icon, label, value, min, max, step, onChange, unit }) => {
     const handleInputBlur = (e) => {
         let numValue = parseInt(e.target.value, 10);
 
-        if (isNaN(numValue)) {
-            numValue = min;
-        } else if (numValue > max) {
-            numValue = max;
-        } else if (numValue < min) {
-            numValue = min;
-        }
+        if (isNaN(numValue)) numValue = min;
+        else if (numValue > max) numValue = max;
+        else if (numValue < min) numValue = min;
         
         onChange({ target: { value: String(numValue) } });
     };
@@ -117,7 +119,8 @@ const ModeSwitcher = ({ mode, setMode }) => (
 export default function App() {
     const [showPermissionModal, setShowPermissionModal] = useState(true);
     const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
-    const [audioError, setAudioError] = useState(''); // State for audio errors
+    const [audioError, setAudioError] = useState('');
+    const [isInitializing, setIsInitializing] = useState(false); // State to show a loading spinner
     const [isPlaying, setIsPlaying] = useState(false);
     
     const [mode, setMode] = useState('consistent');
@@ -148,14 +151,15 @@ export default function App() {
         return () => clearInterval(interval);
     }, []);
 
-    const initializeAudio = async () => {
-        if (!isLibraryLoaded) return;
-        setAudioError(''); // Clear previous errors
+    const initializeAudio = () => { // No longer async
+        if (!isLibraryLoaded || isInitializing) return;
+        setIsInitializing(true);
+        setAudioError('');
         
         const Tone = window.Tone;
-        try {
-            await Tone.start();
-            
+        
+        // Using .then() is more compatible with iOS than async/await for this specific task
+        Tone.start().then(() => {
             synthRef.current = new Tone.Synth({
                 oscillator: { type: 'triangle' },
                 envelope: { attack: 0.005, decay: 0.1, sustain: 0.01, release: 0.1 },
@@ -184,10 +188,12 @@ export default function App() {
 
             setShowPermissionModal(false);
             setIsPlaying(true);
-        } catch (error) {
+            setIsInitializing(false);
+        }).catch(error => {
             console.error("Critical audio error: Could not start AudioContext.", error);
-            setAudioError("Your browser blocked audio. Please check site permissions and refresh.");
-        }
+            setAudioError("Audio failed. Please check site permissions and refresh.");
+            setIsInitializing(false);
+        });
     };
 
     useEffect(() => {
@@ -220,11 +226,10 @@ export default function App() {
 
     return (
         <div className="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans relative">
-            {showPermissionModal && <PermissionModal onAllow={initializeAudio} isLibraryLoaded={isLibraryLoaded} error={audioError} />}
+            {showPermissionModal && <PermissionModal onAllow={initializeAudio} isLibraryLoaded={isLibraryLoaded} error={audioError} isInitializing={isInitializing} />}
             
             <div className="w-full max-w-sm bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-8 space-y-6 border border-gray-700">
                 <div className="text-center">
-                    {/* Responsive title size */}
                     <h1 className="text-2xl sm:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
                         Dynamic Metronome
                     </h1>
