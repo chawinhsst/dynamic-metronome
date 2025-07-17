@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Power, Zap, GitCommit, GitMerge, SlidersHorizontal, Volume2, AlertTriangle } from 'lucide-react';
 
-// --- UI Components ---
+// --- UI Components (Unchanged) ---
 
-// Updated to show a loading state while initializing
 const PermissionModal = ({ onAllow, isLibraryLoaded, error, isInitializing }) => (
     <div className="absolute inset-0 bg-gray-900 bg-opacity-90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="bg-gray-800 rounded-2xl shadow-2xl p-8 border border-gray-700 text-center w-full max-w-sm">
@@ -25,13 +24,7 @@ const PermissionModal = ({ onAllow, isLibraryLoaded, error, isInitializing }) =>
                 disabled={!isLibraryLoaded || isInitializing}
                 className="w-full bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 flex items-center justify-center"
             >
-                {isInitializing ? (
-                    <div className="w-5 h-5 border-t-2 border-white rounded-full animate-spin"></div>
-                ) : isLibraryLoaded ? (
-                    'Allow Audio'
-                ) : (
-                    'Loading Library...'
-                )}
+                {isInitializing ? <div className="w-5 h-5 border-t-2 border-white rounded-full animate-spin"></div> : isLibraryLoaded ? 'Allow Audio' : 'Loading Library...'}
             </button>
         </div>
     </div>
@@ -55,11 +48,9 @@ const Slider = ({ icon, label, value, min, max, step, onChange, unit }) => {
     
     const handleInputBlur = (e) => {
         let numValue = parseInt(e.target.value, 10);
-
         if (isNaN(numValue)) numValue = min;
         else if (numValue > max) numValue = max;
         else if (numValue < min) numValue = min;
-        
         onChange({ target: { value: String(numValue) } });
     };
 
@@ -96,7 +87,6 @@ const Slider = ({ icon, label, value, min, max, step, onChange, unit }) => {
     );
 };
 
-
 const ModeSwitcher = ({ mode, setMode }) => (
     <div className="flex bg-gray-700 rounded-lg p-1">
         <button
@@ -114,13 +104,12 @@ const ModeSwitcher = ({ mode, setMode }) => (
     </div>
 );
 
-
 // --- Main App Component ---
 export default function App() {
     const [showPermissionModal, setShowPermissionModal] = useState(true);
     const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
     const [audioError, setAudioError] = useState('');
-    const [isInitializing, setIsInitializing] = useState(false); // State to show a loading spinner
+    const [isInitializing, setIsInitializing] = useState(false);
     const [isPlaying, setIsPlaying] = useState(false);
     
     const [mode, setMode] = useState('consistent');
@@ -151,15 +140,21 @@ export default function App() {
         return () => clearInterval(interval);
     }, []);
 
-    const initializeAudio = () => { // No longer async
+    const initializeAudio = () => {
         if (!isLibraryLoaded || isInitializing) return;
         setIsInitializing(true);
         setAudioError('');
         
         const Tone = window.Tone;
         
-        // Using .then() is more compatible with iOS than async/await for this specific task
         Tone.start().then(() => {
+            // **THE FIX IS HERE: "Priming" the audio context**
+            // We play a silent sound once to ensure the audio system is fully awake.
+            const primer = new Tone.Oscillator().toDestination();
+            primer.volume.value = -Infinity; // Make it silent
+            primer.start().stop("+0.1");     // Play for a tiny moment and stop
+
+            // Now we set up the actual metronome sound
             synthRef.current = new Tone.Synth({
                 oscillator: { type: 'triangle' },
                 envelope: { attack: 0.005, decay: 0.1, sustain: 0.01, release: 0.1 },
@@ -167,21 +162,17 @@ export default function App() {
             
             loopRef.current = new Tone.Loop((time) => {
                 synthRef.current?.triggerAttackRelease('G5', '16n', time);
-
                 if (modeRef.current === 'inconsistent') {
                     const min = parseFloat(minRateRef.current);
                     const max = parseFloat(maxRateRef.current);
                     const consist = parseFloat(consistencyRef.current);
-                    
                     const randomnessFactor = 1 - (consist / 100);
                     const midpoint = (min + max) / 2;
                     const totalRange = max - min;
                     const effectiveRange = totalRange * randomnessFactor;
                     const randomOffset = (Math.random() - 0.5) * effectiveRange;
                     let newBpm = midpoint + randomOffset;
-                    
                     newBpm = Math.max(min, Math.min(max, newBpm));
-
                     Tone.Transport.bpm.rampTo(newBpm, 0.1);
                 }
             }, '4n');
@@ -199,20 +190,17 @@ export default function App() {
     useEffect(() => {
         const Tone = window.Tone;
         if (!Tone || showPermissionModal) return;
-
         if (mode === 'consistent') {
             Tone.Transport.bpm.value = rate;
         } else {
             Tone.Transport.bpm.value = (parseFloat(minRate) + parseFloat(maxRate)) / 2;
         }
-
         if (isPlaying) {
             loopRef.current?.start(0);
             Tone.Transport.start();
         } else {
             Tone.Transport.stop();
         }
-
     }, [isPlaying, rate, minRate, maxRate, mode, showPermissionModal]);
     
     useEffect(() => {
@@ -242,7 +230,6 @@ export default function App() {
                 
                 <div className="space-y-4">
                     <ModeSwitcher mode={mode} setMode={setMode} />
-
                     {mode === 'consistent' ? (
                         <Slider icon={<Zap size={20} className="text-red-400"/>} label="Rate" value={rate} min="10" max="240" step="1" onChange={(e) => setRate(e.target.value)} unit="BPM" />
                     ) : (
@@ -256,10 +243,7 @@ export default function App() {
             </div>
             <footer className="text-center mt-8 text-gray-500 text-xs sm:text-sm">
                 <p>
-                    {showPermissionModal 
-                        ? "Waiting for audio permission..."
-                        : "Click the power button to start/stop the metronome."
-                    }
+                    {showPermissionModal ? "Waiting for audio permission..." : "Click the power button to start/stop the metronome."}
                 </p>
             </footer>
         </div>
