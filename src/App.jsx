@@ -3,18 +3,35 @@ import { Power, Zap, GitCommit, GitMerge, SlidersHorizontal, Volume2, AlertTrian
 
 // --- UI Components ---
 
-const PermissionModal = ({ onAllow, isLibraryLoaded, error, isInitializing }) => (
+const PermissionModal = ({ onAllow, isLibraryLoaded, error, isInitializing, isIphone }) => (
     <div className="absolute inset-0 bg-gray-900 bg-opacity-90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="bg-gray-800 rounded-2xl shadow-2xl p-8 border border-gray-700 text-center w-full max-w-sm">
             <Volume2 size={48} className="mx-auto text-cyan-400 mb-4" />
             <h2 className="text-2xl font-bold mb-2">Audio Permission Required</h2>
             <p className="text-gray-400 mb-6">A tap is required to enable audio on this device.</p>
+            
             {error && (
                 <div className="bg-red-900/50 border border-red-700 text-red-300 text-sm rounded-lg p-3 mb-4 flex items-center gap-2">
                     <AlertTriangle size={24} />
                     <span>{error}</span>
                 </div>
             )}
+
+            {isIphone && (
+                <div className="text-left bg-gray-700/50 p-4 rounded-lg mb-6 border border-gray-600">
+                    <p className="text-sm text-gray-300 mb-3 text-center">
+                        <strong className="text-white">Important for iPhone:</strong> Please turn off Silent Mode for sound to work.
+                    </p>
+                    <div className="flex justify-center items-center gap-4">
+                        {/* **THE FIX IS HERE**: The container is wider (w-12) and the circle is re-centered (left-3). */}
+                        <div className="w-12 h-16 bg-gray-600 rounded-full p-1 relative">
+                            <div className="w-6 h-6 bg-green-500 rounded-full absolute top-1 left-1 animate-slide-switch"></div>
+                        </div>
+                        <p className="text-xs text-gray-400">Make sure the switch on the side of your phone does not show orange.</p>
+                    </div>
+                </div>
+            )}
+
             <button
                 onClick={onAllow}
                 disabled={!isLibraryLoaded || isInitializing}
@@ -26,7 +43,6 @@ const PermissionModal = ({ onAllow, isLibraryLoaded, error, isInitializing }) =>
     </div>
 );
 
-// New component for the Consistency explanation modal
 const InfoModal = ({ onClose }) => (
     <div className="absolute inset-0 bg-gray-900 bg-opacity-90 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="bg-gray-800 rounded-2xl shadow-2xl p-6 border border-gray-700 w-full max-w-sm relative">
@@ -56,7 +72,6 @@ const InfoModal = ({ onClose }) => (
     </div>
 );
 
-
 const PowerButton = ({ isPlaying, onClick }) => (
     <button
         onClick={onClick}
@@ -71,7 +86,6 @@ const PowerButton = ({ isPlaying, onClick }) => (
     </button>
 );
 
-// Updated Slider component to include the info button
 const Slider = ({ icon, label, value, min, max, step, onChange, unit, onInfoClick }) => {
     const handleInputBlur = (e) => {
         let numValue = parseInt(e.target.value, 10);
@@ -129,10 +143,11 @@ const ModeSwitcher = ({ mode, setMode }) => (
 // --- Main App Component ---
 export default function App() {
     const [showPermissionModal, setShowPermissionModal] = useState(true);
-    const [showInfoModal, setShowInfoModal] = useState(false); // New state for the info modal
+    const [showInfoModal, setShowInfoModal] = useState(false);
     const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
     const [audioError, setAudioError] = useState('');
     const [isInitializing, setIsInitializing] = useState(false);
+    const [isIphone, setIsIphone] = useState(false);
     const [isPlaying, setIsPlaying] = useState(false);
     
     const [mode, setMode] = useState('consistent');
@@ -154,6 +169,8 @@ export default function App() {
     useEffect(() => { consistencyRef.current = consistency; }, [consistency]);
 
     useEffect(() => {
+        setIsIphone(/iPhone/.test(navigator.userAgent));
+        
         const checkTone = () => { if (window.Tone) { setIsLibraryLoaded(true); return true; } return false; };
         if (checkTone()) return;
         const interval = setInterval(() => { if (checkTone()) clearInterval(interval); }, 100);
@@ -232,7 +249,7 @@ export default function App() {
 
     return (
         <div className="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4 font-sans relative">
-            {showPermissionModal && <PermissionModal onAllow={initializeAudio} isLibraryLoaded={isLibraryLoaded} error={audioError} isInitializing={isInitializing} />}
+            {showPermissionModal && <PermissionModal onAllow={initializeAudio} isLibraryLoaded={isLibraryLoaded} error={audioError} isInitializing={isInitializing} isIphone={isIphone} />}
             {showInfoModal && <InfoModal onClose={() => setShowInfoModal(false)} />}
             
             <div className="w-full max-w-sm bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-8 space-y-6 border border-gray-700">
@@ -260,7 +277,7 @@ export default function App() {
                                 min="0" max="100" step="1" 
                                 onChange={(e) => setConsistency(e.target.value)} 
                                 unit="%"
-                                onInfoClick={() => setShowInfoModal(true)} // This triggers the new modal
+                                onInfoClick={() => setShowInfoModal(true)}
                            />
                         </div>
                     )}

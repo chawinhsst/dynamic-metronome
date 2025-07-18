@@ -47,16 +47,21 @@ input[type="range"]::-moz-range-track {
   Animation for the iPhone silent switch notice
 */
 @keyframes slide-switch {
+  /* Start in the "silent" (down) position */
   0%, 20% {
-    transform: translateX(0);
-    background-color: #4ade80; /* green-500 */
-  }
-  30%, 70% {
-    transform: translateX(18px); /* Moves the switch to the "silent" position */
+    transform: translateY(32px); /* Moves the switch down */
     background-color: #f97316; /* orange-500 */
   }
+  
+  /* Animate moving up to the correct "not silent" position */
+  30%, 70% {
+    transform: translateY(0); /* Moves the switch up */
+    background-color: #4ade80; /* green-500 */
+  }
+
+  /* Stay in the correct position for the rest of the loop */
   80%, 100% {
-    transform: translateX(0);
+    transform: translateY(0);
     background-color: #4ade80; /* green-500 */
   }
 }
